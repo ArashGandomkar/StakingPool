@@ -48,8 +48,8 @@ This project allows users to stake ERC20 tokens, earn rewards over time, withdra
 Clone the repository:
 
 ```bash
-git clone https://github.com/<your-username>/<repository-name>.git
-cd <repository-name>
+git clone https://github.com/ArashGandomkar/StakingPool.git
+cd StakingPool
 ```
 
 Install dependencies:

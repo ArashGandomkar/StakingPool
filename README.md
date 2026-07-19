@@ -32,12 +32,15 @@ This project allows users to stake ERC20 tokens, earn rewards over time, withdra
 ```
 .
 ├── src/
+│   ├── MockERC20.sol
 │   └── StakingPool.sol
 ├── test/
-│   └── StakingPool.t.sol
-├── script/
+│   ├── StakingPool.t.sol
+│   ├── StakingPoolHandler.sol
+│   └── StakingPoolInvariant.t.sol
 ├── lib/
 ├── foundry.toml
+├── LICENSE
 └── README.md
 ```
 

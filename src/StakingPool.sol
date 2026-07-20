@@ -68,49 +68,58 @@ contract StakingPool is ReentrancyGuard, Ownable, Pausable {
         return ((balances[account] * (rewardPerToken() - rewardPerTokenPaid[account])) / PRECISION) + rewards[account];
     }
 
-    function stake(uint256 amount) external nonReentrant whenNotPaused updateReward(msg.sender) {
-        //require(amount > 0, "Amount must be > 0");
+    function _stake(address user, uint256 amount) internal updateReward(user) {
         if (amount == 0) {
             revert ZeroAmount();
         }
         totalSupply += amount;
-        balances[msg.sender] += amount;
-        stakingToken.safeTransferFrom(msg.sender, address(this), amount);
-        emit Staked(msg.sender, amount);
+        balances[user] += amount;
+        stakingToken.safeTransferFrom(user, address(this), amount);
+        emit Staked(user, amount);
     }
 
-    function withdraw(uint256 amount) external nonReentrant whenNotPaused updateReward(msg.sender) {
-        //require(amount > 0 && balances[msg.sender] >= amount, "Invalid amount");
+    function stake(uint256 amount) external nonReentrant whenNotPaused {
+        _stake(msg.sender, amount);
+        
+    }
+
+    function _withdraw(address user, uint256 amount) internal updateReward(user) {
         if (amount == 0) {
             revert ZeroAmount();
         }
-        if (amount > balances[msg.sender]) {
-            revert InsufficientStakedBalance(balances[msg.sender], amount);
+        if (amount > balances[user]) {
+            revert InsufficientStakedBalance(balances[user], amount);
         }
         unchecked {
             totalSupply -= amount;
-            balances[msg.sender] -= amount;
+            balances[user] -= amount;
         }
-        stakingToken.safeTransfer(msg.sender, amount);
-        emit Withdrawn(msg.sender, amount);
+        stakingToken.safeTransfer(user, amount);
+        emit Withdrawn(user, amount);
     }
 
-    function claimReward() external nonReentrant whenNotPaused updateReward(msg.sender) {
-        uint256 reward = rewards[msg.sender];
-        //require(reward > 0, "No reward to claim.");
+    function withdraw(uint256 amount) external nonReentrant whenNotPaused {
+        _withdraw(msg.sender, amount);
+    }
+
+    function _claimReward(address user) internal updateReward(user) {
+        uint256 reward = rewards[user];
         if (reward == 0) {
             revert NoRewardsToClaim();
         }
-        rewards[msg.sender] = 0;
-        //require(rewardPool >= reward, "Insufficient reward pool");
+        rewards[user] = 0;
         if (reward > rewardPool) {
             revert InsufficientRewardPool(rewardPool, reward);
         }
         unchecked {
             rewardPool -= reward;
         }
-        stakingToken.safeTransfer(msg.sender, reward);
-        emit RewardClaimed(msg.sender, reward);
+        stakingToken.safeTransfer(user, reward);
+        emit RewardClaimed(user, reward);
+    }
+
+    function claimReward() external nonReentrant whenNotPaused {
+        _claimReward(msg.sender);
     }
 
     function setRate(uint256 _rate) external onlyOwner whenNotPaused updateReward(address(0)) {
@@ -136,5 +145,4 @@ contract StakingPool is ReentrancyGuard, Ownable, Pausable {
     function unpause() external onlyOwner {
         _unpause();
     }
-
 }

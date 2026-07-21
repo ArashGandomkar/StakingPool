@@ -10,8 +10,10 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 error ZeroAmount();
 error ZeroAddress();
 error NoRewardsToClaim();
+error RateTooHigh(uint256 maxRate);
 error InsufficientRewardPool(uint256 available, uint256 required);
 error InsufficientStakedBalance(uint256 balance, uint256 requested);
+error RescueAmountExceedsAvailable(uint256 available, uint256 requested);
 
 contract StakingPool is ReentrancyGuard, Ownable, Pausable {
     event RewardFunded(uint256 amount);
@@ -28,6 +30,7 @@ contract StakingPool is ReentrancyGuard, Ownable, Pausable {
     uint256 public totalSupply;
     uint256 public rewardPool;
     uint256 private constant PRECISION = 1e18;
+    uint256 public constant MAX_REWARD_RATE = 5 ether;
 
     mapping(address => uint256) public rewardPerTokenPaid;
     mapping(address => uint256) public rewards;
@@ -123,9 +126,27 @@ contract StakingPool is ReentrancyGuard, Ownable, Pausable {
     }
 
     function setRate(uint256 _rate) external onlyOwner whenNotPaused updateReward(address(0)) {
+        if (_rate > MAX_REWARD_RATE) {
+            revert RateTooHigh(MAX_REWARD_RATE);
+        }
         uint256 oldRate = rewardRate;
         rewardRate = _rate;
         emit RewardRateUpdated(oldRate, _rate);
+    }
+
+    function rescueTokens(address token, uint256 amount) external onlyOwner {
+        if (token == address(0)) {
+            revert ZeroAddress();
+        }
+        IERC20 rescueToken = IERC20(token);
+        if (token == address(stakingToken)) {
+            uint256 rescueable =
+                rescueToken.balanceOf(address(this)) - totalSupply - rewardPool;
+            if (amount > rescueable) {
+                revert RescueAmountExceedsAvailable(rescueable, amount);
+            }
+        }
+        rescueToken.safeTransfer(msg.sender, amount);
     }
 
     function getUserInfo(address user)

@@ -4,8 +4,8 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
 
 error ZeroAmount();
 error ZeroAddress();
@@ -15,12 +15,17 @@ error InsufficientRewardPool(uint256 available, uint256 required);
 error InsufficientStakedBalance(uint256 balance, uint256 requested);
 error RescueAmountExceedsAvailable(uint256 available, uint256 requested);
 
-contract StakingPool is ReentrancyGuard, Ownable, Pausable {
+contract StakingPool is ReentrancyGuard, AccessControl, Pausable {
     event RewardFunded(uint256 amount);
     event Staked(address indexed user, uint256 amount);
     event Withdrawn(address indexed user, uint256 amount);
     event RewardClaimed(address indexed user, uint256 reward);
     event RewardRateUpdated(uint256 oldRate, uint256 newRate);
+
+    bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
+    bytes32 public constant RESCUER_ROLE = keccak256("RESCUER_ROLE");
+    bytes32 public constant TREASURY_ROLE  = keccak256("TREASURY_ROLE");
+    bytes32 public constant RATE_MANAGER_ROLE = keccak256("RATE_MANAGER_ROLE");
 
     using SafeERC20 for IERC20;
     IERC20 public immutable stakingToken;
@@ -36,13 +41,21 @@ contract StakingPool is ReentrancyGuard, Ownable, Pausable {
     mapping(address => uint256) public rewards;
     mapping(address => uint256) public balances;
 
-    constructor(address _stakingToken) Ownable(_msgSender()) {
+    constructor(address _stakingToken) {
         if (_stakingToken == address(0)) {
             revert ZeroAddress();
         }
         stakingToken = IERC20(_stakingToken);
         lastUpdateTime = block.timestamp;
+
+        address admin = _msgSender();
+        _grantRole(DEFAULT_ADMIN_ROLE, admin);
+        _grantRole(PAUSER_ROLE, admin);
+        _grantRole(RESCUER_ROLE, admin);
+        _grantRole(TREASURY_ROLE, admin);
+        _grantRole(RATE_MANAGER_ROLE, admin);
     }
+
     modifier updateReward(address account) {
         rewardPerTokenStored = rewardPerToken();
         lastUpdateTime = block.timestamp;
@@ -53,7 +66,7 @@ contract StakingPool is ReentrancyGuard, Ownable, Pausable {
         _;
     }
 
-    function fundRewards(uint256 amount) external onlyOwner {
+    function fundRewards(uint256 amount) external onlyRole(TREASURY_ROLE) {
         if (amount == 0) {
             revert ZeroAmount();
         }
@@ -125,7 +138,7 @@ contract StakingPool is ReentrancyGuard, Ownable, Pausable {
         _claimReward(msg.sender);
     }
 
-    function setRate(uint256 _rate) external onlyOwner whenNotPaused updateReward(address(0)) {
+    function setRate(uint256 _rate) external onlyRole(RATE_MANAGER_ROLE) whenNotPaused updateReward(address(0)) {
         if (_rate > MAX_REWARD_RATE) {
             revert RateTooHigh(MAX_REWARD_RATE);
         }
@@ -134,7 +147,7 @@ contract StakingPool is ReentrancyGuard, Ownable, Pausable {
         emit RewardRateUpdated(oldRate, _rate);
     }
 
-    function rescueTokens(address token, uint256 amount) external onlyOwner {
+    function rescueTokens(address token, uint256 amount) external onlyRole(RESCUER_ROLE) {
         if (token == address(0)) {
             revert ZeroAddress();
         }
@@ -159,11 +172,11 @@ contract StakingPool is ReentrancyGuard, Ownable, Pausable {
         rewardPerTokenPaid_ = rewardPerTokenPaid[user];
     }
 
-    function pause() external onlyOwner {
+    function pause() external onlyRole(PAUSER_ROLE) {
         _pause();
     }
 
-    function unpause() external onlyOwner {
+    function unpause() external onlyRole(PAUSER_ROLE) {
         _unpause();
     }
 }

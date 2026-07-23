@@ -37,6 +37,14 @@ contract stakingPoolTest is Test {
         token.approve(address(pool), type(uint256).max);
         vm.prank(bob);
         token.approve(address(pool), type(uint256).max);
+
+        vm.startPrank(owner);
+        pool.grantRole(pool.DEFAULT_ADMIN_ROLE(), owner);
+        pool.grantRole(pool.RESCUER_ROLE(), bob);
+        pool.grantRole(pool.PAUSER_ROLE(), alice);
+        pool.grantRole(pool.TREASURY_ROLE(), owner);
+        pool.grantRole(pool.RATE_MANAGER_ROLE(), owner);
+        vm.stopPrank();
     }
 
     //ُStake tests
@@ -125,7 +133,7 @@ contract stakingPoolTest is Test {
         assertEq(reward, 10e18);
     }
 
-    function testEarnedWithoutStake() public {
+    function testEarnedWithoutStake() public view {
         vm.assertEq(pool.earned(alice), 0);
     }
 
@@ -271,5 +279,97 @@ contract stakingPoolTest is Test {
         vm.prank(owner);
         pool.pause();
         assertTrue(pool.paused());
+    }
+
+    //AccessControl tests
+    function testOnlyRateManagerCanSetRate() public {
+        vm.prank(owner);
+        pool.setRate(2e18);
+        vm.assertEq(pool.rewardRate(), 2e18);
+        vm.prank(alice);
+        vm.expectRevert();
+        pool.setRate(2e18);
+    }
+
+    function testPauserCanPause() public {
+        vm.prank(alice);
+        pool.pause();
+        assertTrue(pool.paused());
+    }
+    function testPauserCanUnPause() public {
+        vm.startPrank(alice);
+        pool.pause();
+        pool.unpause();
+        assertFalse(pool.paused());
+        vm.stopPrank();
+    }
+    function testNonPauserCannotPause() public {
+        vm.prank(bob);
+        vm.expectRevert();
+        pool.pause();
+    }
+
+    function testNonPauserCannotUnPause() public {
+        vm.prank(alice);
+        pool.pause();
+        vm.prank(bob);
+        vm.expectRevert();
+        pool.unpause();
+    }
+    
+    function testOnlyRescuerCanRescueToken() public {
+        vm.prank(owner);
+        assertTrue(token.transfer(address(pool), 100e18));
+        assertEq(token.balanceOf(address(pool)),100e18);
+        vm.startPrank(bob);
+        pool.rescueTokens(address(token), 100e18);
+        vm.assertEq(token.balanceOf(address(pool)), pool.totalSupply() + pool.rewardPool());
+        vm.stopPrank();
+    }
+    
+    function testNonRescuerCannotRescueToken() public {
+        vm.prank(owner);
+        assertTrue(token.transfer(address(pool), 100e18));
+        vm.prank(alice);
+        vm.expectRevert();
+        pool.rescueTokens(address(token), 100e18);
+    }
+
+    function testOnlyTreasuryCanFundRewards() public {
+        vm.prank(owner);
+        vm.expectEmit(false, false, false, true);
+        emit StakingPool.RewardFunded(200e18);
+        pool.fundRewards(200e18);
+        assertEq(pool.rewardPool(), 200e18);
+        vm.prank(alice);
+        vm.expectRevert();
+        pool.fundRewards(100e18);
+    }
+
+    function testPauserRenounceRole() public {
+        vm.startPrank(alice);
+        pool.renounceRole(pool.PAUSER_ROLE(), alice);
+        assertFalse(pool.hasRole(pool.PAUSER_ROLE(), alice));
+        vm.expectRevert();
+        pool.pause();
+        vm.stopPrank();
+    }
+    function testRescuerRevokeRole() public {
+        vm.startPrank(owner);
+        assertTrue(token.transfer(address(pool), 100e18));
+        pool.revokeRole(pool.RESCUER_ROLE(), bob);
+        vm.stopPrank();
+        vm.prank(bob);
+        vm.expectRevert();
+        pool.rescueTokens(address(token), 100e18);
+    }
+    function testGrantRateManagerRole() public {
+        assertTrue(pool.hasRole(pool.DEFAULT_ADMIN_ROLE(), owner));
+        vm.startPrank(owner);
+        pool.grantRole(pool.RATE_MANAGER_ROLE(), alice);
+        vm.stopPrank();
+        vm.prank(alice);
+        pool.setRate(2e18);
+        assertEq(pool.rewardRate(), 2e18);
     }
 }
